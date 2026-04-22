@@ -1,5 +1,6 @@
-# drift_composition
-A 1D model for the advection and diffusion of molecules through protoplanetary discs.
+# simPle
+Simulation of Planet evolution that tracks the chemical composition of the material accreted onto the protoplanet. 
+It is based on a 1D model for the advection and diffusion of molecules through protoplanetary discs, drift_composition [issues page](https://github.com/rbooth200/drift_composition/). 
 
 Installation
 ------------
@@ -16,11 +17,13 @@ python -m pip install -e .
 Getting started
 ---------------
 To see how the code can be used to compute the composition of a protoplanetary disc see the tutorial in `examples/basic_model.ipynb`
+For an example of the compositional evolution of a planet see the tutorial in `examples/planet_example.ipynb`
 
 Authors
 -------
  - Richard Booth (University of Leeds) <https://github.com/rbooth200>
-
+ - Anna Penzlin (LMU Munich) <https://github.com/miosta>
+   
 Contact
 -------
 Submit a bug report or feature request on the [issues page](https://github.com/rbooth200/drift_composition/issues). For anything else, feel free to [email me](mailto:r.a.booth@leeds.ac.uk).

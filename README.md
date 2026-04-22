@@ -26,7 +26,7 @@ Authors
    
 Contact
 -------
-Submit a bug report or feature request on the [issues page](https://github.com/rbooth200/drift_composition/issues). For anything else, feel free to [email me](mailto:r.a.booth@leeds.ac.uk).
+Submit a bug report or feature request on the [issues page](https://github.com/miosta/simPle/issues). For anything else, feel free to [email me](mailto:A.Penzlin@lmu.de).
 
 License
 -------

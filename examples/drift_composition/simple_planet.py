@@ -185,13 +185,16 @@ def visc_mig(planet, p_env, disc, T):
             print('CAUTION:vr>0', dr_X, dist/Rau, sig_gas, ir, planet.mass)
         vr = - abs(3/np.sqrt(dist)/sig_gas *dr_X*yr)
     return vr
-
-def dk_mig(planet, p_env, disc, T):
+    
+def dk_mig(planet, p_env, disc, T, stall = 0.1):
     '''Migration near visc limit, based on the deviations seen in Durmann 2014
     
     CAUTION: Not suitable for Type I migration object!
     Min speed 0.1 viscous velocity,
-    Max speed 10 viscous velocity'''
+    Max speed 10 viscous velocity
+    
+    Use stall to cut-off migration when the thermal mass is reached
+    '''
     dist = planet.dist
     hr   = p_env.hr(T,dist)
     vk   = p_env.vk(dist)
@@ -200,20 +203,15 @@ def dk_mig(planet, p_env, disc, T):
     gas_density = sig_gas/Msun
     sig_std = (1e-7 / yr) /3./np.pi/nu
     v_visc  = visc_mig(planet, p_env, disc, T)
+    q_planet = planet.mass/p_env.mass_star
 
     f_mig   = np.min((4 * (gas_density/sig_std)**(0.6), 5.))
     adot_mig = f_mig* v_visc #* gas_density * dist**2 / 1e-3
-    f_still = np.min((0.09*(planet.mass*1e3)**(-0.4), 2.0)) 
-    #tau_0   = - gas_density*vk**2*dist**2*(planet.mass/p_env.mass_star/hr)**2 / Msun    
-    #ang_mom = planet.mass*dist*vk
+    f_still = np.min((0.1*(planet.mass*1e3)**(-0.4), 2.0))
+    if hr**3/q_planet < 1:
+        f_still = stall*(planet.mass*1e3)**(-0.4)    
     adot0  = f_still * adot_mig
-    #factor  = np.max((f_still*f_mig,0.1))
-    #a_dot   = factor*v_visc
-    #print(a_dot/v_visc, adot0/v_visc, adot_mig/v_visc, f_mig, f_still)
-    #if a_dot > 3*v_visc:
-        #print(a_dot, v_visc)
     return adot0
-    
 
 def plansi_flux (plansi_frac, planet, p_env, disc, T):
     '''Simplified from Fourtier 2013
@@ -280,12 +278,12 @@ def mass_growth_pl(planet, p_env, disc, T, dt, plansi_frac):
     new_planet = Planet(mc+mg, mc, mg, mol_comp, planet.dist, planet.time+dt)
     return new_planet
 
-def mig_planet(planet, p_env, disc, T, dt):
-    a_dot = dk_mig(planet,p_env, disc,T)
+def mig_planet(planet, mig_method, dt):
+    a_dot = mig_method
     #a_dot = visc_mig(planet, p_env, disc, T)
     return planet.dist + a_dot*dt
 
-def std_evo(planet, DM, p_env, T, f_plansi, dt, nt, comp='CO'):
+def std_evo(planet, DM, p_env, T, f_plansi, dt, nt, comp='CO', stall=0.1):
     masses = [planet.mass]
     mcs = [planet.mc]
     mgs = [planet.mg]
@@ -300,7 +298,7 @@ def std_evo(planet, DM, p_env, T, f_plansi, dt, nt, comp='CO'):
         #    DM.compute_dust_surface_density(Mdot_dust, Stokes)
         #    print( Mdot_gas*(1-(nn-nt+100)/100))
         planet = mass_growth_pl(planet, p_env, DM, T, dt, f_plansi) 
-        planet.dist = np.max((mig_planet(planet, p_env, DM, T, dt) ,1e-6*Rau))
+        planet.dist = np.max((mig_planet(planet,dk_mig(planet,p_env, disc,T,stall=stall),dt) ,1e-6*Rau))
         if planet.dist < 1e-3*Rau:
             print('accreted')
         masses.append(planet.mass)
@@ -311,7 +309,7 @@ def std_evo(planet, DM, p_env, T, f_plansi, dt, nt, comp='CO'):
         rr.append(planet.dist)
     return np.array(masses),np.array(mcs),np.array(mgs),np.array(mco_g),np.array(mco_d),np.array(rr)
 
-def std_evo_comp(planet_in, DM, p_env, T, f_plansi, dt_ini, nt, final_radius = 1e-3):
+def std_evo_comp(planet_in, DM, p_env, T, f_plansi, dt_ini, nt, final_radius = 1e-3, stall=0.1):
     planet_evo = np.array([planet_in])
     r_grid     = p_env.grid.Rc
     dt_adapt   = dt_ini
@@ -323,7 +321,7 @@ def std_evo_comp(planet_in, DM, p_env, T, f_plansi, dt_ini, nt, final_radius = 1
     for nn in range(nt-1):
         t += dt_adapt
         planet = mass_growth_pl(planet_in, p_env, DM, T, dt_adapt, f_plansi) 
-        planet.dist = np.max((mig_planet(planet, p_env, DM, T, dt_adapt) ,1e-4*Rau))
+        planet.dist = np.max((mig_planet(planet,dk_mig(planet,p_env, disc,T,stall=stall),dt),1e-4*Rau))
         ir = np.argmin(abs(r_grid-planet.dist))
         dr = r_grid[ir+1]-r_grid[ir]
         dt_adapt = min((abs(dr / dk_mig(planet, p_env, DM, T))*0.5,

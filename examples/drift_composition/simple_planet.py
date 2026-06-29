@@ -235,7 +235,7 @@ def pebble_accretion(planet, p_env, disc, T):
     mass_p = planet.mass
     dist   = planet.dist
     hr        = p_env.hr(T,dist)
-    stokes    = np.max((p_env.Stokes(disc,dist),1e-10))
+    stokes    = 0.001#np.max((p_env.Stokes(disc,dist),1e-10))
     mass_star = p_env.mass_star
     alpha     = p_env.alpha
     _ , sig_dust = p_env.sigs_tot(disc, dist)
@@ -251,6 +251,7 @@ def pebble_accretion(planet, p_env, disc, T):
     else: dm_peb = dm_3d
     if planet.mass > 20 * (p_env.hr(T, dist)/0.05)**3. * Mearth/Msun:
         dm_peb = 0
+    #print(dm_peb/Msun*yr, planet.mass/( Mearth/Msun))
     return dm_peb/Msun*yr
 
 def mass_growth_pl(planet, p_env, disc, T, dt, plansi_frac):

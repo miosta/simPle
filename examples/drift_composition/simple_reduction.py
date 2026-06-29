@@ -39,13 +39,13 @@ class Evolution:
 def atom_mass(f_comp, exclude=()):
     f_atom = dict(zip(list(ELEMENT_MASS.keys()),np.zeros((len(list(ELEMENT_MASS.keys())),2))))
     all_names = list(f_comp.keys())
-    mol_names = [na for na in all_names if na not in exclude]
+    mol_names = [nam for nam in all_names if nam not in exclude]
     for mol_n in mol_names:
         n_atoms = atoms_in_molecule(mol_n)
-        mass_mol = np.sum([n_atoms[na]*ELEMENT_MASS[na] for na in list(n_atoms.keys())])
-        for na in list(n_atoms.keys()):
-            f_atom[na][0] += f_comp[mol_n][0]/mass_mol*ELEMENT_MASS[na] * n_atoms[na]
-            f_atom[na][1] += f_comp[mol_n][1]/mass_mol*ELEMENT_MASS[na] * n_atoms[na]
+        mass_mol = np.sum([n_atoms[nam]*ELEMENT_MASS[nam] for nam in list(n_atoms.keys())])
+        for nam in list(n_atoms.keys()):
+            f_atom[nam][0] += f_comp[mol_n][0]/mass_mol*ELEMENT_MASS[nam] * n_atoms[nam]
+            f_atom[nam][1] += f_comp[mol_n][1]/mass_mol*ELEMENT_MASS[nam] * n_atoms[nam]
     return f_atom
 
 def dust_to_gas(evo, cut_index):

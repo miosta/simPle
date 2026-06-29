@@ -252,7 +252,7 @@ def main():
     evolution = Evolution(planet_evo, nn)
     plot_planet(evolution)
     plot_atoms(evolution)    
-    evolution = Evolution(planet_evo, nn, dt, exclude=dust)
+    evolution = Evolution(planet_evo, nn, exclude=dust)
     #red.store_data_range(planet_ini, DM, p_env, T)
     plot_CtoO_cut(evolution,'O','H', red.crit_mass(evolution), solar = SOLAR_OH)
     plot_CtoO_cut(evolution, 'C','O', red.crit_mass(evolution), solar= SOLAR_CO)

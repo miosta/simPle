@@ -11,6 +11,7 @@ def seed_mass(hr, flaring, gas_slope, dist):
 
 def loc_disc (g_val, Rg, dist):
     cid = np.argmin(np.abs(Rg-dist))
+    print(cid)
     loc_val = g_val[cid]
     #d_val = (g_val[cid+1]-g_val[cid-1])/(Rg[cid+1]-Rg[cid-1])
     #loc_val = g_val[cid] + d_val*(dist-Rg[cid])

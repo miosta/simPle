@@ -42,7 +42,7 @@ class Planet:
 
 
 class Planetesimals:
-    def __init__(self, grid, r=10, e0=1e-4, i0=None, rho=5, fSigma=1e-3,  Ncells=1000, fdot=0):
+    def __init__(self, grid, r=0.3, e0=1e-4, i0=None, rho=5, fSigma=1e-3,  Ncells=1000, fdot=0):
         self.r = r*1e5
         self.ae = grid.Re
         self.a = 0.5*(self.ae[1:]+self.ae[:-1])
@@ -167,7 +167,7 @@ def pebble_accretion(planet, p_env, disc, T):
     mass_p = planet.mass
     dist   = planet.dist
     hr        = p_env.hr(T,dist)
-    stokes    = np.max((p_env.Stokes(disc,dist),1e-10))
+    stokes    = 0.01#np.max((p_env.Stokes(disc,dist),1e-10))
     mass_star = p_env.mass_star
     alpha     = p_env.alpha
     _ , sig_dust = p_env.sigs_tot(disc, dist)
@@ -208,7 +208,7 @@ def plansi_source(f0, p_env, planets, pl, T):
             break            
     return df_fresh
 
-def mass_growth_plansi(planets, p_env, disc, T, dt, plansi):
+def mass_growth_plansi(planets, p_env, disc, T, dt, plansi, final_dist = 1e-2):
     f = plansi.fSigma
 
     e0, i0 = plansi.e, plansi.i
@@ -227,36 +227,37 @@ def mass_growth_plansi(planets, p_env, disc, T, dt, plansi):
     no_pebbles = False
     for npi, planet in enumerate(planets):
         dist = planet.dist
-        tau_f, fej, dm_f = plansi_fluxes(plansi, planet, p_env, disc, T, feeding_zone=10.)
-        f /= (1 + dt*tau_f*(1+fej))
-        dm_pla = np.sum(f*dm_f)
-        if no_pebbles:
-            dm_peb = 0.
-            #print('stop')
-        else:
-            dm_peb = pebble_accretion(planet, p_env, disc, T)
-            if dm_peb == 0.:
-                no_pebbles = True
-                #print('no pebbles')
-        dm_gas = gas_accretion(planet, p_env, disc, T)
-        mc = planet.mc + dm_pla*dt + dm_peb*dt
-    #print (plansi_flux(plansi, planet, p_env, disc, T), dm_pla)
-        mg = planet.mg + dm_gas*dt
+        if dist > final_dist:
+            tau_f, fej, dm_f = plansi_fluxes(plansi, planet, p_env, disc, T, feeding_zone=10.)
+            f /= (1 + dt*tau_f*(1+fej))
+            dm_pla = np.sum(f*dm_f)
+            if no_pebbles:
+                dm_peb = 0.
+                #print('stop')
+            else:
+                dm_peb = pebble_accretion(planet, p_env, disc, T)
+                if dm_peb == 0.:
+                    no_pebbles = True
+                    #print('no pebbles')
+            dm_gas = gas_accretion(planet, p_env, disc, T)
+            mc = planet.mc + dm_pla*dt + dm_peb*dt
+        #print (plansi_flux(plansi, planet, p_env, disc, T), dm_pla)
+            mg = planet.mg + dm_gas*dt
     
-    #print(dm_pla,dm_gas)
-        sg , sd = p_env.sigs_tot(disc, dist)
-        molg, mold = p_env.sig_mol(disc,dist)
-        mol_names = list(molg.keys())
+        #print(dm_pla,dm_gas)
+            sg , sd = p_env.sigs_tot(disc, dist)
+            molg, mold = p_env.sig_mol(disc,dist)
+            mol_names = list(molg.keys())
     
-        mol_comp = {
-            k: np.array([
-                v[0] + dm_gas*(molg[k]/sg)*dt,
-                v[1] + (dm_pla+dm_peb)*(mold[k]/sd)*dt
-            ])
-            for k, v in planet.f_comp.items()
-        }
+            mol_comp = {
+                k: np.array([
+                    v[0] + dm_gas*(molg[k]/sg)*dt,
+                    v[1] + (dm_pla+dm_peb)*(mold[k]/sd)*dt
+                ])
+                for k, v in planet.f_comp.items()
+            }
 
-        planets[npi] = Planet(mc+mg, mc, mg, mol_comp, planet.dist, planet.time+dt)
+            planets[npi] = Planet(mc+mg, mc, mg, mol_comp, planet.dist, planet.time+dt)
 
         #pl.fSigma = f*(1 + plansi_source(f0, planets, d, pl)*dt)
         #pl.e = (np.sqrt(e2)*f)/(f*(1 + plansi_source(f0, planets, d, pl)*dt))
@@ -288,10 +289,11 @@ def multi_evo_comp(planets_in, DM, p_env, T, plansi_ini, dt_ini, nt, final_radiu
     for nn in range(nt-1):
         #evolution
 
-        planets, plansi = mass_growth_plansi(planets_ini, p_env, DM, T, dt_adapt, plansi_ini) 
+        planets, plansi = mass_growth_plansi(planets_ini, p_env, DM, T, dt_adapt, plansi_ini, final_dist = final_radius*Rau) 
         for npi,(planet, planet_evo) in enumerate(zip(planets, multi_evo)):
             if planet.dist > final_radius*Rau:
-                planet.dist = np.max((mig_planet(planet, p_env, DM, T, dt_adapt,f_mig=f_mig) ,final_radius*Rau))
+                common_mig = mig_planet(planet,p_env,DM,T,dt_adapt)#np.min((mig_planet(planet,p_env,DM,T,dt_adapt), planets_ini[1].dist*2**(2./3.)))
+                planet.dist = np.max((common_mig ,final_radius*Rau))
                 planets_ini[npi] = planet
             if nn%10==0:
                 multi_evo[npi] = np.append(multi_evo[npi], planet)
@@ -304,15 +306,18 @@ def multi_evo_comp(planets_in, DM, p_env, T, plansi_ini, dt_ini, nt, final_radiu
         t += dt_adapt        
         
         #adaptive time step
-        dt_ps = np.ones_like(planets_ini)
-        for nps,planet in enumerate(planets_ini):
-            ir = np.argmin(abs(r_grid-planet.dist))
-            dr = r_grid[ir+1]-r_grid[ir]
-            dt_ps[nps] = min((abs(dr / dk_mig(planet, p_env, DM, T))*0.5,
+        if t<1000:
+            dt_adapt = 100 
+        else:
+            dt_ps = np.ones_like(planets_ini)
+            for nps,planet in enumerate(planets_ini):
+                ir = np.argmin(abs(r_grid-planet.dist))
+                dr = r_grid[ir+1]-r_grid[ir]
+                dt_ps[nps] = min((abs(dr / dk_mig(planet, p_env, DM, T))*0.5,
                         abs(planet_in.mass*5e-2 / gas_accretion(planet_in, p_env, DM, T))*0.5,
                         10000))
-            dt_ps[nps] = max((dt_adapt, 100))
-        dt_adapt = np.min(dt_ps)
+                dt_ps[nps] = max((dt_adapt, 100))
+            dt_adapt = np.min(dt_ps)
 
         #end sim
         end = False
@@ -324,6 +329,7 @@ def multi_evo_comp(planets_in, DM, p_env, T, plansi_ini, dt_ini, nt, final_radiu
                 print('2Mjup at t = {}; n= {}'.format(t,nn))
                 end = True
         if t > final_time:
+            print(t,dt_adapt)
             print('1e7 yr evolution reached ; n= {}'.format(t,nn))
             end = True
         if end:
@@ -346,7 +352,7 @@ def multi_evo_naiv(planets_ini, DM, p_env, T, f_plansi, dt_ini, nt, final_radius
     for nn in range(nt-1):
         #evolution
         for npi,(planet, planet_evo) in enumerate(zip(planets_ini, multi_evo)):
-            planet = mass_growth_pl(planet, p_env, DM, T, dt_adapt, f_plansi) 
+            planet = mass_growth_pl(planet, p_env, DM, T, dt_adapt, f_plansi)
             planet.dist = np.max((mig_planet(planet, p_env, DM, T, dt_adapt) , final_radius*Rau))
             if nn%10==0:
                 multi_evo[npi] = np.append(multi_evo[npi], planet)

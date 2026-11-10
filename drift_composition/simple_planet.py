@@ -185,13 +185,16 @@ def visc_mig(planet, p_env, disc, T):
             print('CAUTION:vr>0', dr_X, dist/Rau, sig_gas, ir, planet.mass)
         vr = - abs(3/np.sqrt(dist)/sig_gas *dr_X*yr)
     return vr
-
-def dk_mig(planet, p_env, disc, T):
+    
+def dk_mig(planet, p_env, disc, T, stall = 0.1):
     '''Migration near visc limit, based on the deviations seen in Durmann 2014
     
     CAUTION: Not suitable for Type I migration object!
     Min speed 0.1 viscous velocity,
-    Max speed 10 viscous velocity'''
+    Max speed 10 viscous velocity
+    
+    Use stall to cut-off migration when the thermal mass is reached
+    '''
     dist = planet.dist
     hr   = p_env.hr(T,dist)
     vk   = p_env.vk(dist)
@@ -200,20 +203,15 @@ def dk_mig(planet, p_env, disc, T):
     gas_density = sig_gas/Msun
     sig_std = (1e-7 / yr) /3./np.pi/nu
     v_visc  = visc_mig(planet, p_env, disc, T)
+    q_planet = planet.mass/p_env.mass_star
 
     f_mig   = np.min((4 * (gas_density/sig_std)**(0.6), 5.))
     adot_mig = f_mig* v_visc #* gas_density * dist**2 / 1e-3
-    f_still = np.min((0.09*(planet.mass*1e3)**(-0.4), 2.0)) 
-    #tau_0   = - gas_density*vk**2*dist**2*(planet.mass/p_env.mass_star/hr)**2 / Msun    
-    #ang_mom = planet.mass*dist*vk
+    f_still = np.min((0.1*(planet.mass*1e3)**(-0.4), 2.0))
+    if hr**3/q_planet < 1:
+        f_still = stall*(planet.mass*1e3)**(-0.4)    
     adot0  = f_still * adot_mig
-    #factor  = np.max((f_still*f_mig,0.1))
-    #a_dot   = factor*v_visc
-    #print(a_dot/v_visc, adot0/v_visc, adot_mig/v_visc, f_mig, f_still)
-    #if a_dot > 3*v_visc:
-        #print(a_dot, v_visc)
     return adot0
-    
 
 def plansi_flux (plansi_frac, planet, p_env, disc, T):
     '''Simplified from Fourtier 2013
@@ -235,7 +233,7 @@ def pebble_accretion(planet, p_env, disc, T):
     mass_p = planet.mass
     dist   = planet.dist
     hr        = p_env.hr(T,dist)
-    stokes    = np.max((p_env.Stokes(disc,dist),1e-10))
+    stokes    = 0.001#np.max((p_env.Stokes(disc,dist),1e-10))
     mass_star = p_env.mass_star
     alpha     = p_env.alpha
     _ , sig_dust = p_env.sigs_tot(disc, dist)
@@ -251,6 +249,7 @@ def pebble_accretion(planet, p_env, disc, T):
     else: dm_peb = dm_3d
     if planet.mass > 20 * (p_env.hr(T, dist)/0.05)**3. * Mearth/Msun:
         dm_peb = 0
+    #print(dm_peb/Msun*yr, planet.mass/( Mearth/Msun))
     return dm_peb/Msun*yr
 
 def mass_growth_pl(planet, p_env, disc, T, dt, plansi_frac):
@@ -279,12 +278,12 @@ def mass_growth_pl(planet, p_env, disc, T, dt, plansi_frac):
     new_planet = Planet(mc+mg, mc, mg, mol_comp, planet.dist, planet.time+dt)
     return new_planet
 
-def mig_planet(planet, p_env, disc, T, dt):
-    a_dot = dk_mig(planet,p_env, disc,T)
+def mig_planet(planet, mig_method, dt):
+    a_dot = mig_method
     #a_dot = visc_mig(planet, p_env, disc, T)
     return planet.dist + a_dot*dt
 
-def std_evo(planet, DM, p_env, T, f_plansi, dt, nt, comp='CO'):
+def std_evo(planet, DM, p_env, T, f_plansi, dt, nt, comp='CO', stall=0.1):
     masses = [planet.mass]
     mcs = [planet.mc]
     mgs = [planet.mg]
@@ -292,14 +291,8 @@ def std_evo(planet, DM, p_env, T, f_plansi, dt, nt, comp='CO'):
     mco_d = [planet.f_comp[comp][1]]
     rr = [planet.dist]
     for nn in range(nt-1):
-        #if nn > nt-100:
-        #    TT = lambda R: 150*(R/Rau)**-0.5
-        #    alp = lambda R: p_env.alpha
-        #    DM = DiscModel(grid, Mdot_gas*(1-(nn-nt+100)/100), alp, TT)
-        #    DM.compute_dust_surface_density(Mdot_dust, Stokes)
-        #    print( Mdot_gas*(1-(nn-nt+100)/100))
         planet = mass_growth_pl(planet, p_env, DM, T, dt, f_plansi) 
-        planet.dist = np.max((mig_planet(planet, p_env, DM, T, dt) ,1e-6*Rau))
+        planet.dist = np.max((mig_planet(planet,dk_mig(planet,p_env, DM,T,stall=stall),dt_adapt) ,1e-6*Rau))
         if planet.dist < 1e-3*Rau:
             print('accreted')
         masses.append(planet.mass)
@@ -310,7 +303,7 @@ def std_evo(planet, DM, p_env, T, f_plansi, dt, nt, comp='CO'):
         rr.append(planet.dist)
     return np.array(masses),np.array(mcs),np.array(mgs),np.array(mco_g),np.array(mco_d),np.array(rr)
 
-def std_evo_comp(planet_in, DM, p_env, T, f_plansi, dt_ini, nt, final_radius = 1e-3):
+def std_evo_comp(planet_in, DM, p_env, T, f_plansi, dt_ini, nt, final_radius = 1e-3, stall=0.1, final_time=1e7, final_mass=2e-3):
     planet_evo = np.array([planet_in])
     r_grid     = p_env.grid.Rc
     dt_adapt   = dt_ini
@@ -322,30 +315,59 @@ def std_evo_comp(planet_in, DM, p_env, T, f_plansi, dt_ini, nt, final_radius = 1
     for nn in range(nt-1):
         t += dt_adapt
         planet = mass_growth_pl(planet_in, p_env, DM, T, dt_adapt, f_plansi) 
-        planet.dist = np.max((mig_planet(planet, p_env, DM, T, dt_adapt) ,1e-4*Rau))
+        planet.dist = np.max((mig_planet(planet,dk_mig(planet,p_env, DM,T,stall=stall),dt_adapt),r_grid[2]))
         ir = np.argmin(abs(r_grid-planet.dist))
         dr = r_grid[ir+1]-r_grid[ir]
         dt_adapt = min((abs(dr / dk_mig(planet, p_env, DM, T))*0.5,
                         abs(planet_in.mass*5e-2 / gas_accretion(planet_in, p_env, DM, T))*0.5,
                         10000))
         dt_adapt = max((dt_adapt, 100))
-        #print('dt=',dt_adapt, 
-        #        '; dx=', dr/Rau,
-        #        '; r=', planet.dist/Rau, 
-        #        '; dm=', gas_accretion(planet, p_env, DM,  T), 
-        #        abs(dr / dk_mig(planet, p_env, DM, T))*0.5,
-        #        abs(planet_in.mass*5e-2 / gas_accretion(planet_in, p_env, DM, T))*0.5)
+
         if nn%10==0:
             planet_evo = np.append(planet_evo, planet)
         planet_in = planet
         if planet.dist < final_radius*Rau:
             print('accreted at t = {}; n= {}'.format(planet.time,nn))
             break
-        elif planet.mass > 2e-3:
+        elif planet.mass > final_mass:
             print('2Mjup at t = {}; n= {}'.format(t,nn))
             break
-        elif t > 1e7:
-            print('1e7 yr evolution reached ; n= {}'.format(t,nn))
+        elif t > final_time:
+            print('{} yr evolution reached ; n= {}'.format(t,nn))
             break
     #print(nn,len(planet_evo))
-    return planet_evo[:nn//10], nn//10
+    return planet_evo, nn//10+2
+
+def full_evo_comp(planet_in, DM, p_env, T, f_plansi, dt_ini, nt, final_radius = 1e-3, stall=0.1, final_time=1e7, final_mass=2e-3):
+    planet_evo = np.array([planet_in])
+    r_grid     = p_env.grid.Rc
+    dt_adapt   = dt_ini
+    t          = 0.
+    nn = 0
+    if final_radius*Rau < r_grid[0]:
+        final_radius = 2.* r_grid[0]/Rau
+        print('reset final radius to: ', final_radius)
+    for nn in range(nt-1):
+        t += dt_adapt
+        planet = mass_growth_pl(planet_in, p_env, DM, T, dt_adapt, f_plansi) 
+        planet.dist = np.max((mig_planet(planet,dk_mig(planet,p_env, DM,T,stall=stall),dt_adapt),r_grid[2]))
+        ir = np.argmin(abs(r_grid-planet.dist))
+        dr = r_grid[ir+1]-r_grid[ir]
+        dt_adapt = min((abs(dr / dk_mig(planet, p_env, DM, T))*0.5,
+                        abs(planet_in.mass*5e-2 / gas_accretion(planet_in, p_env, DM, T))*0.5,
+                        10000))
+        dt_adapt = max((dt_adapt, 100))
+
+        planet_evo = np.append(planet_evo, planet)
+        planet_in = planet
+        if planet.dist < final_radius*Rau:
+            print('accreted at t = {}; n= {}'.format(planet.time,nn))
+            break
+        elif planet.mass > final_mass:
+            print('2Mjup at t = {}; n= {}'.format(t,nn))
+            break
+        elif t > final_time:
+            print('{} yr evolution reached ; n= {}'.format(t,nn))
+            break
+    #print(nn,len(planet_evo))
+    return planet_evo, nn
